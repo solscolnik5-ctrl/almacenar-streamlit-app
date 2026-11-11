@@ -12,109 +12,107 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-# 1. Configuración general de la página
+# 1. Configuración de la página
 st.set_page_config(
     page_title="AlmacénAR - Monitor de Precios",
     page_icon="🛒",
     layout="wide"
 )
 
-# Estilos CSS personalizados para mejorar la estética general
-st.markdown("""
-    <style>
-    .main { background-color: #f8f9fa; }
-    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-    </style>
-""", unsafe_allow_html=True)
-
-# Título y encabezado principal
 st.title("🛒 AlmacénAR: Monitor de Precios y Competitividad")
-st.markdown("Herramienta de inteligencia competitiva para el control de precios frente a la competencia en tiempo real.")
+st.markdown("Panel de inteligencia comercial conectado a los datos extraídos de la competencia mediante **códigos EAN**.")
 
-# 2. Barra lateral (Sidebar) para controles
-st.sidebar.header("⚙️ Configuración")
+# 2. Barra lateral de control
+st.sidebar.header("⚙️ Parámetros de Negocio")
 umbral_alerta = st.sidebar.slider("Umbral de Alerta de Brecha (%)", min_value=1, max_value=30, value=10)
-costo_almacenar = st.sidebar.slider("Margen / Multiplicador AlmacénAR", min_value=0.70, max_value=1.10, value=0.92, step=0.01)
+costo_almacenar = st.sidebar.slider("Factor de Margen / Costo AlmacénAR", min_value=0.70, max_value=1.10, value=0.92, step=0.01)
 
-# 3. Carga de datos base
+# 3. Carga de datos reales desde el CSV generado en Colab
 @st.cache_data
-def obtener_datos_comparables():
-    datos = [
-        {'EAN': '7791234567891', 'Producto': 'Gaseosa Coca-Cola Sabor Original 2.25 L', 'Jumbo': 2500, 'Disco': 2550, 'Día': 2350},
-        {'EAN': '7799876543210', 'Producto': 'Leche Entera La Serenísima 1 L', 'Jumbo': 1150, 'Disco': 1180, 'Día': 1100},
-        {'EAN': '7795555444333', 'Producto': 'Aceite de Girasol Cocinero 900 ml', 'Jumbo': 1800, 'Disco': 1850, 'Día': 1750},
-        {'EAN': '7791111222333', 'Producto': 'Galletitas Chocolinas 250 g', 'Jumbo': 950, 'Disco': 980, 'Día': 920},
-        {'EAN': '7794444555666', 'Producto': 'Yerba Mate Playadito 1 kg', 'Jumbo': 3400, 'Disco': 3450, 'Día': 3200},
-    ]
-    return pd.DataFrame(datos)
+def cargar_datos_reales():
+    try:
+        # Lee el archivo CSV que subiste a la misma carpeta
+        df = pd.read_csv('datos_super.csv')
+        return df
+    except FileNotFoundError:
+        st.error("⚠️ No se encontró el archivo 'datos_super.csv'. Subilo a tu repositorio de GitHub junto con app.py.")
+        return pd.DataFrame()
 
-df_base = obtener_datos_comparables()
+df_crudo = cargar_datos_reales()
 
-# Procesamiento de Negocio
-supers = ['Jumbo', 'Disco', 'Día']
-df_base['AlmacénAR'] = df_base[supers].mean(axis=1) * costo_almacenar
-df_base['Precio_Min_Mercado'] = df_base[supers].min(axis=1)
-df_base['Super_Mas_Barato'] = df_base[supers].idxmin(axis=1)
-df_base['Brecha_%'] = ((df_base['AlmacénAR'] - df_base['Precio_Min_Mercado']) / df_base['Precio_Min_Mercado']) * 100
+if not df_crudo.empty:
+    # 4. Procesamiento de negocio (Tabla Pivote idéntica a tu notebook)
+    pivot_precios = df_crudo.pivot_table(
+        index=['EAN', 'Producto'],
+        columns='Supermercado',
+        values='Precio',
+        aggfunc='mean'
+    ).reset_index()
 
-# 4. Tarjetas de Métricas Principales (KPIs)
-col1, col2, col3, col4 = st.columns(4)
-with col1:
-    st.metric("Total Productos", len(df_base))
-with col2:
-    st.metric("Brecha Promedio", f"{df_base['Brecha_%'].mean():.2f}%")
-with col3:
-    mas_caros = (df_base['Brecha_%'] > umbral_alerta).sum()
-    st.metric("Prod. en Alerta", mas_caros)
-with col4:
-    lider = df_base['Super_Mas_Barato'].mode()[0]
-    st.metric("Líder en Precios Bajos", lider)
+    # Obtenemos dinámicamente los nombres de los supermercados detectados
+    supers = [c for c in pivot_precios.columns if c not in ['EAN', 'Producto']]
 
-st.divider()
+    # Simulación de nuestro precio interno y métricas de mercado
+    pivot_precios['AlmacénAR'] = pivot_precios[supers].mean(axis=1) * costo_almacenar
+    pivot_precios['Precio_Min_Mercado'] = pivot_precios[supers].min(axis=1)
+    pivot_precios['Super_Mas_Barato'] = pivot_precios[supers].idxmin(axis=1)
+    pivot_precios['Brecha_%'] = ((pivot_precios['AlmacénAR'] - pivot_precios['Precio_Min_Mercado']) / pivot_precios['Precio_Min_Mercado']) * 100
 
-# 5. NUEVA SECCIÓN: Buscador de Producto Específico
-st.subheader("🔍 Consultar Precios por Producto")
-producto_seleccionado = st.selectbox(
-    "Elegí o escribí un producto para ver su precio detallado en cada supermercado:",
-    df_base['Producto'].tolist()
-)
+    # 5. Tarjetas de Métricas Principales (KPIs)
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Prod. Emparejados (EAN)", len(pivot_precios))
+    with col2:
+        st.metric("Brecha Promedio vs Mercado", f"{pivot_precios['Brecha_%'].mean():.2f}%")
+    with col3:
+        alertas = (pivot_precios['Brecha_%'] > umbral_alerta).sum()
+        st.metric("Productos en Alerta", alertas)
+    with col4:
+        lider = pivot_precios['Super_Mas_Barato'].mode()[0] if not pivot_precios.empty else "N/A"
+        st.metric("Líder en Precios Bajos", lider)
 
-# Filtramos la fila del producto elegido
-prod_info = df_base[df_base['Producto'] == producto_seleccionado].iloc[0]
+    st.divider()
 
-# Mostramos el desglose en columnas estéticas
-col_a, col_b, col_c, col_d, col_e = st.columns(5)
-with col_a:
-    st.metric("AlmacénAR (Nuestro)", f"${prod_info['AlmacénAR']:.2f}")
-with col_b:
-    st.metric("Jumbo", f"${prod_info['Jumbo']:.2f}")
-with col_c:
-    st.metric("Disco", f"${prod_info['Disco']:.2f}")
-with col_d:
-    st.metric("Día", f"${prod_info['Día']:.2f}")
-with col_e:
-    st.metric("Brecha vs Mínimo", f"{prod_info['Brecha_%']:.2f}%",
-              delta_color="inverse" if prod_info['Brecha_%'] > 0 else "normal")
-
-st.markdown(f"**Código EAN:** `{prod_info['EAN']}` | **Supermercado más económico:** `{prod_info['Super_Mas_Barato']}`")
-
-st.divider()
-
-# 6. Pestañas de Visualización Completa
-tab1, tab2 = st.tabs(["📊 Tabla Comparativa Completa", "📈 Gráfico de Brechas de Precios"])
-
-with tab1:
-    st.dataframe(
-        df_base[['EAN', 'Producto', 'AlmacénAR', 'Jumbo', 'Disco', 'Día', 'Precio_Min_Mercado', 'Brecha_%']],
-        use_container_width=True
+    # 6. Buscador interactivo por producto
+    st.subheader("🔍 Consulta Detallada por Producto")
+    producto_seleccionado = st.selectbox(
+        "Seleccioná o buscá un producto para ver su precio en cada cadena:",
+        pivot_precios['Producto'].tolist()
     )
 
-with tab2:
-    df_top = df_base.sort_values(by='Brecha_%', ascending=False)
-    fig, ax = plt.subplots(figsize=(10, 4))
-    ax.barh(df_top['Producto'], df_top['Brecha_%'], color='#e74c3c')
-    ax.axvline(0, color='black', linestyle='--', linewidth=0.8)
-    ax.set_xlabel('Brecha Porcentual (%) - Positivo = Estamos Más Caros')
-    ax.invert_yaxis()
-    ax.grid(axis='x', linestyle=':', alpha=0.6)
-    st.pyplot(fig)
+    # Filtramos la información del producto elegido
+    prod_info = pivot_precios[pivot_precios['Producto'] == producto_seleccionado].iloc[0]
+
+    # Mostramos dinámicamente las columnas según los supermercados analizados
+    cols_visuales = st.columns(len(supers) + 2)
+    with cols_visuales[0]:
+        st.metric("AlmacénAR (Nuestro)", f"${prod_info['AlmacénAR']:.2f}")
+
+    for idx, sup in enumerate(supers):
+        with cols_visuales[idx + 1]:
+            st.metric(sup, f"${prod_info[sup]:.2f}")
+
+    with cols_visuales[-1]:
+        st.metric("Brecha %", f"{prod_info['Brecha_%']:.2f}%")
+
+    st.markdown(f"**Código EAN:** `{prod_info['EAN']}` | **Competidor más económico para este ítem:** `{prod_info['Super_Mas_Barato']}`")
+
+    st.divider()
+
+    # 7. Pestañas con la tabla completa y gráficos
+    tab1, tab2 = st.tabs(["📊 Tabla Comparativa Completa", "📈 Gráfico de Brechas de Precios"])
+
+    with tab1:
+        st.dataframe(pivot_precios, use_container_width=True)
+
+    with tab2:
+        st.subheader("Top Productos con Mayor Desviación de Precio")
+        df_top = pivot_precios.sort_values(by='Brecha_%', ascending=False).head(10)
+
+        fig, ax = plt.subplots(figsize=(10, 4))
+        ax.barh(df_top['Producto'], df_top['Brecha_%'], color='#e74c3c')
+        ax.axvline(0, color='black', linestyle='--', linewidth=0.8)
+        ax.set_xlabel('Brecha Porcentual (%) - Positivo = Estamos Más Caros')
+        ax.invert_yaxis()
+        ax.grid(axis='x', linestyle=':', alpha=0.6)
+        st.pyplot(fig)
