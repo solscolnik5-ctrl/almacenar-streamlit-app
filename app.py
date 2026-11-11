@@ -39,19 +39,17 @@ def cargar_datos_reales():
 
 df_crudo = cargar_datos_reales()
 
-# --- AQUÍ PEGÁS EL CÓDIGO TEMPORAL PARA VER LAS COLUMNAS ---
-st.write("Columnas detectadas en tu CSV:", df_crudo.columns.tolist())
-st.dataframe(df_crudo.head(3))
-# -----------------------------------------------------------
-
 if not df_crudo.empty:
-    # 4. Procesamiento de negocio (Tabla Pivote)
+    # 4. Procesamiento de negocio (Tabla Pivote con minúsculas exactas del CSV)
     pivot_precios = df_crudo.pivot_table(
-        index=['EAN', 'Producto'],
-        columns='Supermercado',
-        values='Precio',
+        index=['ean', 'producto'],
+        columns='supermercado',
+        values='precio',
         aggfunc='mean'
     ).reset_index()
+
+    # Renombramos las columnas para que la app se vea prolija con mayúsculas en la interfaz
+    pivot_precios = pivot_precios.rename(columns={'ean': 'EAN', 'producto': 'Producto'})
 
     supers = [c for c in pivot_precios.columns if c not in ['EAN', 'Producto']]
 
