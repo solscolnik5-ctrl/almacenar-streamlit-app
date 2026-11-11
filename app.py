@@ -31,7 +31,6 @@ costo_almacenar = st.sidebar.slider("Factor de Margen / Costo AlmacénAR", min_v
 @st.cache_data
 def cargar_datos_reales():
     try:
-        # Lee el archivo CSV que subiste a la misma carpeta
         df = pd.read_csv('datos_super.csv')
         return df
     except FileNotFoundError:
@@ -40,8 +39,13 @@ def cargar_datos_reales():
 
 df_crudo = cargar_datos_reales()
 
+# --- AQUÍ PEGÁS EL CÓDIGO TEMPORAL PARA VER LAS COLUMNAS ---
+st.write("Columnas detectadas en tu CSV:", df_crudo.columns.tolist())
+st.dataframe(df_crudo.head(3))
+# -----------------------------------------------------------
+
 if not df_crudo.empty:
-    # 4. Procesamiento de negocio (Tabla Pivote idéntica a tu notebook)
+    # 4. Procesamiento de negocio (Tabla Pivote)
     pivot_precios = df_crudo.pivot_table(
         index=['EAN', 'Producto'],
         columns='Supermercado',
@@ -49,10 +53,8 @@ if not df_crudo.empty:
         aggfunc='mean'
     ).reset_index()
 
-    # Obtenemos dinámicamente los nombres de los supermercados detectados
     supers = [c for c in pivot_precios.columns if c not in ['EAN', 'Producto']]
 
-    # Simulación de nuestro precio interno y métricas de mercado
     pivot_precios['AlmacénAR'] = pivot_precios[supers].mean(axis=1) * costo_almacenar
     pivot_precios['Precio_Min_Mercado'] = pivot_precios[supers].min(axis=1)
     pivot_precios['Super_Mas_Barato'] = pivot_precios[supers].idxmin(axis=1)
@@ -80,10 +82,8 @@ if not df_crudo.empty:
         pivot_precios['Producto'].tolist()
     )
 
-    # Filtramos la información del producto elegido
     prod_info = pivot_precios[pivot_precios['Producto'] == producto_seleccionado].iloc[0]
 
-    # Mostramos dinámicamente las columnas según los supermercados analizados
     cols_visuales = st.columns(len(supers) + 2)
     with cols_visuales[0]:
         st.metric("AlmacénAR (Nuestro)", f"${prod_info['AlmacénAR']:.2f}")
