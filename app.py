@@ -11,30 +11,34 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import requests
 
-# 1. Configuración general de la página en Streamlit
+# 1. Configuración general de la página
 st.set_page_config(
     page_title="AlmacénAR - Monitor de Precios",
     page_icon="🛒",
     layout="wide"
 )
 
-# Título y encabezado
-st.title("🛒 AlmacénAR: Monitor de Precios y Competitividad")
+# Estilos CSS personalizados para mejorar la estética general
 st.markdown("""
-Esta aplicación procesa datos de productos mediante **códigos EAN** para comparar nuestros precios contra la competencia (**Jumbo, Disco y Día**) en tiempo real.
-""")
+    <style>
+    .main { background-color: #f8f9fa; }
+    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    </style>
+""", unsafe_allow_html=True)
 
-# 2. Barra lateral (Sidebar) para controles del usuario
-st.sidebar.header("⚙️ Configuración del Análisis")
+# Título y encabezado principal
+st.title("🛒 AlmacénAR: Monitor de Precios y Competitividad")
+st.markdown("Herramienta de inteligencia competitiva para el control de precios frente a la competencia en tiempo real.")
+
+# 2. Barra lateral (Sidebar) para controles
+st.sidebar.header("⚙️ Configuración")
 umbral_alerta = st.sidebar.slider("Umbral de Alerta de Brecha (%)", min_value=1, max_value=30, value=10)
 costo_almacenar = st.sidebar.slider("Margen / Multiplicador AlmacénAR", min_value=0.70, max_value=1.10, value=0.92, step=0.01)
 
-# 3. Simulación / Carga de Datos (Usamos caché para que sea súper rápido)
+# 3. Carga de datos base
 @st.cache_data
 def obtener_datos_comparables():
-    # Datos de prueba estructurados idénticos a los del scraping final
     datos = [
         {'EAN': '7791234567891', 'Producto': 'Gaseosa Coca-Cola Sabor Original 2.25 L', 'Jumbo': 2500, 'Disco': 2550, 'Día': 2350},
         {'EAN': '7799876543210', 'Producto': 'Leche Entera La Serenísima 1 L', 'Jumbo': 1150, 'Disco': 1180, 'Día': 1100},
@@ -46,52 +50,71 @@ def obtener_datos_comparables():
 
 df_base = obtener_datos_comparables()
 
-# 4. Procesamiento de Negocio
+# Procesamiento de Negocio
 supers = ['Jumbo', 'Disco', 'Día']
-
-# Simulación del precio interno y cálculo del mínimo del mercado
 df_base['AlmacénAR'] = df_base[supers].mean(axis=1) * costo_almacenar
 df_base['Precio_Min_Mercado'] = df_base[supers].min(axis=1)
 df_base['Super_Mas_Barato'] = df_base[supers].idxmin(axis=1)
 df_base['Brecha_%'] = ((df_base['AlmacénAR'] - df_base['Precio_Min_Mercado']) / df_base['Precio_Min_Mercado']) * 100
 
-# 5. Métricas principales (KIPs rápidos en tarjetas)
+# 4. Tarjetas de Métricas Principales (KPIs)
 col1, col2, col3, col4 = st.columns(4)
 with col1:
-    st.metric("Total Productos Emparejados", len(df_base))
+    st.metric("Total Productos", len(df_base))
 with col2:
-    st.metric("Brecha Promedio vs Mercado", f"{df_base['Brecha_%'].mean():.2f}%")
+    st.metric("Brecha Promedio", f"{df_base['Brecha_%'].mean():.2f}%")
 with col3:
     mas_caros = (df_base['Brecha_%'] > umbral_alerta).sum()
-    st.metric("Prod. en Alerta (Sobreprecio)", mas_caros, delta_color="inverse")
+    st.metric("Prod. en Alerta", mas_caros)
 with col4:
-    lider_mercado = df_base['Super_Mas_Barato'].mode()[0]
-    st.metric("Competidor Más Barato", lider_mercado)
+    lider = df_base['Super_Mas_Barato'].mode()[0]
+    st.metric("Líder en Precios Bajos", lider)
 
 st.divider()
 
-# 6. Pestañas de Visualización
-tab1, tab2 = st.tabs(["📊 Tabla Comparativa", "📈 Gráfico de Brecha de Precios"])
+# 5. NUEVA SECCIÓN: Buscador de Producto Específico
+st.subheader("🔍 Consultar Precios por Producto")
+producto_seleccionado = st.selectbox(
+    "Elegí o escribí un producto para ver su precio detallado en cada supermercado:",
+    df_base['Producto'].tolist()
+)
+
+# Filtramos la fila del producto elegido
+prod_info = df_base[df_base['Producto'] == producto_seleccionado].iloc[0]
+
+# Mostramos el desglose en columnas estéticas
+col_a, col_b, col_c, col_d, col_e = st.columns(5)
+with col_a:
+    st.metric("AlmacénAR (Nuestro)", f"${prod_info['AlmacénAR']:.2f}")
+with col_b:
+    st.metric("Jumbo", f"${prod_info['Jumbo']:.2f}")
+with col_c:
+    st.metric("Disco", f"${prod_info['Disco']:.2f}")
+with col_d:
+    st.metric("Día", f"${prod_info['Día']:.2f}")
+with col_e:
+    st.metric("Brecha vs Mínimo", f"{prod_info['Brecha_%']:.2f}%",
+              delta_color="inverse" if prod_info['Brecha_%'] > 0 else "normal")
+
+st.markdown(f"**Código EAN:** `{prod_info['EAN']}` | **Supermercado más económico:** `{prod_info['Super_Mas_Barato']}`")
+
+st.divider()
+
+# 6. Pestañas de Visualización Completa
+tab1, tab2 = st.tabs(["📊 Tabla Comparativa Completa", "📈 Gráfico de Brechas de Precios"])
 
 with tab1:
-    st.subheader("Comparación de Precios por EAN")
-    # Formateamos la tabla para ver valores claros
     st.dataframe(
         df_base[['EAN', 'Producto', 'AlmacénAR', 'Jumbo', 'Disco', 'Día', 'Precio_Min_Mercado', 'Brecha_%']],
         use_container_width=True
     )
 
 with tab2:
-    st.subheader("Top Productos donde AlmacénAR está más caro")
-
-    # Gráfico de barras horizontales
     df_top = df_base.sort_values(by='Brecha_%', ascending=False)
-
     fig, ax = plt.subplots(figsize=(10, 4))
-    barras = ax.barh(df_top['Producto'], df_top['Brecha_%'], color='#e74c3c')
+    ax.barh(df_top['Producto'], df_top['Brecha_%'], color='#e74c3c')
     ax.axvline(0, color='black', linestyle='--', linewidth=0.8)
     ax.set_xlabel('Brecha Porcentual (%) - Positivo = Estamos Más Caros')
     ax.invert_yaxis()
     ax.grid(axis='x', linestyle=':', alpha=0.6)
-
     st.pyplot(fig)
